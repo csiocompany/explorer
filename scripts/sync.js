@@ -32,6 +32,21 @@ function usage() {
   process.exit(0);
 }
 
+if (process.platform == 'win32') {
+	var rl = require('readline').createInterface({
+		input: process.stdin,
+		output: process.stdout
+	});
+	
+	rl.on('SIGINT', function() {
+		process.emit('SIGINT');
+	});
+}
+
+process.on('SIGINT', function() {
+	exit();
+});
+
 // check options
 if (process.argv[2] == 'index') {
   if (process.argv.length <3) {
@@ -118,6 +133,95 @@ dbString = dbString + '@' + settings.dbsettings.address;
 dbString = dbString + ':' + settings.dbsettings.port;
 dbString = dbString + '/' + settings.dbsettings.database;
 
+
+
+// ---------------------------------> DB Functions
+function dbRunUpdate() {
+	db.update_db(settings.coin, function(){
+		db.get_stats(settings.coin, function(stats){
+		  /*if (settings.heavy == true) {
+			db.update_heavy(settings.coin, stats.count, 20, function(){
+			});
+		  }*/
+		  if (mode == 'reindex') {
+			dbReindex(stats);          
+		  } else if (mode == 'check') {
+			dbCheck(stats);
+		  } else if (mode == 'update') {
+			dbUpdate(stats);
+		  }
+		});
+	});
+}
+
+function dbReindex(stats) {
+	Tx.remove({}, function(err) { 
+		Address.remove({}, function(err2) { 
+		  Richlist.update({coin: settings.coin}, {
+			received: [],
+			balance: [],
+		  }, function(err3) { 
+			Stats.update({coin: settings.coin}, { 
+			  last: 0,
+			}, function() {
+			  console.log('index cleared (reindex)');
+			}); 
+			db.update_tx_db(settings.coin, 1, stats.count, settings.update_timeout, function(){
+			  db.update_richlist('received', function(){
+				db.update_richlist('balance', function(){
+				  db.get_stats(settings.coin, function(nstats){
+					console.log('reindex complete (block: %s)', nstats.last);
+					exit();
+				  });
+				});
+			  });
+			});
+		  });
+		});
+	});
+}
+
+function dbCheck(stats) {
+	db.update_tx_db(settings.coin, 1, stats.count, settings.check_timeout, function(){
+		db.get_stats(settings.coin, function(nstats){
+		  console.log('check complete (block: %s)', nstats.last);
+		  exit();
+		});
+	});
+}
+
+function dbUpdate(stats) {
+	var start = stats.last
+	
+	if (settings.start_block > 0 && settings.start_block > start) {
+		start = settings.start_block;
+	}
+	
+	db.update_tx_db(settings.coin, start, stats.count, settings.update_timeout, function(){
+		db.update_richlist('received', function(){
+		  db.update_richlist('balance', function(){
+			db.get_stats(settings.coin, function(nstats){
+			  console.log('update complete (block: %s)', nstats.last);
+//			  exit();
+			  dbUpdateMempool();
+			});
+		  });
+		});
+	});
+}
+
+function dbUpdateMempool() {
+	db.update_mempool_db(settings.update_timeout, function() {
+		db.update_mined_blocks_db(settings.update_timeout, function() {
+			setTimeout(function() {
+				dbUpdateMempool();
+			}, settings.update_rerun_timeout);
+		});
+	});
+}
+// DB Functions <---------------------------------
+
+
 is_locked(function (exists) {
   if (exists) {
     console.log("Script already running..");
@@ -136,59 +240,7 @@ is_locked(function (exists) {
               console.log('Run \'npm start\' to create database structures before running this script.');
               exit();
             } else {
-              db.update_db(settings.coin, function(){
-                db.get_stats(settings.coin, function(stats){
-                  if (settings.heavy == true) {
-                    db.update_heavy(settings.coin, stats.count, 20, function(){
-                    
-                    });
-                  }
-                  if (mode == 'reindex') {
-                    Tx.remove({}, function(err) { 
-                      Address.remove({}, function(err2) { 
-                        Richlist.update({coin: settings.coin}, {
-                          received: [],
-                          balance: [],
-                        }, function(err3) { 
-                          Stats.update({coin: settings.coin}, { 
-                            last: 0,
-                          }, function() {
-                            console.log('index cleared (reindex)');
-                          }); 
-                          db.update_tx_db(settings.coin, 1, stats.count, settings.update_timeout, function(){
-                            db.update_richlist('received', function(){
-                              db.update_richlist('balance', function(){
-                                db.get_stats(settings.coin, function(nstats){
-                                  console.log('reindex complete (block: %s)', nstats.last);
-                                  exit();
-                                });
-                              });
-                            });
-                          });
-                        });
-                      });
-                    });              
-                  } else if (mode == 'check') {
-                    db.update_tx_db(settings.coin, 1, stats.count, settings.check_timeout, function(){
-                      db.get_stats(settings.coin, function(nstats){
-                        console.log('check complete (block: %s)', nstats.last);
-                        exit();
-                      });
-                    });
-                  } else if (mode == 'update') {
-                    db.update_tx_db(settings.coin, stats.last, stats.count, settings.update_timeout, function(){
-                      db.update_richlist('received', function(){
-                        db.update_richlist('balance', function(){
-                          db.get_stats(settings.coin, function(nstats){
-                            console.log('update complete (block: %s)', nstats.last);
-                            exit();
-                          });
-                        });
-                      });
-                    });
-                  }
-                });
-              });
+			  dbRunUpdate();
             }
           });
         } else {
