@@ -197,26 +197,31 @@ function dbUpdate(stats) {
 		start = settings.start_block;
 	}
 	
-	db.update_tx_db(settings.coin, start, stats.count, settings.update_timeout, function(){
-		db.update_richlist('received', function(){
-		  db.update_richlist('balance', function(){
-			db.get_stats(settings.coin, function(nstats){
-			  console.log('update complete (block: %s)', nstats.last);
-//			  exit();
-			  dbUpdateMempool();
+// Update blocks with blockheight = -1
+	db.update_mined_blocks_db(settings.update_timeout, function() {
+		
+	// Update current block txs
+		db.update_tx_db(settings.coin, start, stats.count, settings.update_timeout, function(){
+			db.update_richlist('received', function(){
+			  db.update_richlist('balance', function(){
+				db.get_stats(settings.coin, function(nstats){
+				  console.log('update complete (block: %s)', nstats.last);
+	//			  exit();
+				  dbUpdateMempool();
+				});
+			  });
 			});
-		  });
 		});
 	});
 }
 
 function dbUpdateMempool() {
+	
+// Update blocks in mempool
 	db.update_mempool_db(settings.update_timeout, function() {
-		db.update_mined_blocks_db(settings.update_timeout, function() {
-			setTimeout(function() {
-				dbUpdateMempool();
-			}, settings.update_rerun_timeout);
-		});
+		setTimeout(function() {
+			dbRunUpdate();
+		}, settings.update_rerun_timeout);
 	});
 }
 // DB Functions <---------------------------------
