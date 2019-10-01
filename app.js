@@ -44,7 +44,7 @@ app.set('view engine', 'jade');
 app.use(favicon(path.join(__dirname, settings.favicon)));
 app.use(logger('dev'));
 app.use(bodyParser.json());
-app.use(bodyParser.urlencoded());
+app.use(bodyParser.urlencoded({extended: true}));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -57,14 +57,19 @@ app.use('/ext/getmoneysupply', function(req,res){
   });
 });
 
-app.use('/ext/getaddress/:hash', function(req,res){
+
+// --------------------------------> API
+app.use('/ext/addr/:hash', function(req,res){
   db.get_address(req.param('hash'), function(address){
     if (address) {
       var a_ext = {
         address: address.a_id,
-        sent: (address.sent / 100000000),
-        received: (address.received / 100000000),
-        balance: (address.balance / 100000000).toString().replace(/(^-+)/mg, ''),
+//        sent: (address.sent / 100000000),
+		sent: address.sent,
+//        received: (address.received / 100000000),
+		received: address.received,
+//        balance: (address.balance / 100000000).toString().replace(/(^-+)/mg, ''),
+		balance: address.balance,
         last_txs: address.txs,
       };
       res.send(a_ext);
@@ -73,16 +78,34 @@ app.use('/ext/getaddress/:hash', function(req,res){
     }
   });
 });
-
-app.use('/ext/getbalance/:hash', function(req,res){
+app.use('/ext/addrs', function(req, res) {
+	if (!Array.isArray(req.body.addrs)) {
+		res.send("empty addrs[] array");
+	}
+	else {
+		db.get_addresses(req.body.addrs, req.param('txs'), function(addrs) {
+			if (addrs) {
+				res.send(addrs);
+			}
+			else {
+				res.send([]);
+			}
+		});
+	}
+});
+app.use('/ext/balance/:hash', function(req,res){
   db.get_address(req.param('hash'), function(address){
     if (address) {
-      res.send((address.balance / 100000000).toString().replace(/(^-+)/mg, ''));
+//      res.send((address.balance / 100000000).toString().replace(/(^-+)/mg, ''));
+		res.send(address.balance.toString());
     } else {
       res.send({ error: 'address not found.', hash: req.param('hash')})
     }
   });
 });
+// API <--------------------------------
+
+
 
 app.use('/ext/getdistribution', function(req,res){
   db.get_richlist(settings.coin, function(richlist){

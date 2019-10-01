@@ -234,12 +234,8 @@ is_locked(function (exists) {
   } else {
     create_lock(function (){
       console.log("script launched with pid: " + process.pid);
-      mongoose.connect(dbString, function(err) {
-        if (err) {
-          console.log('Unable to connect to database: %s', dbString);
-          console.log('Aborting');
-          exit();
-        } else if (database == 'index') {
+      mongoose.connect(dbString, {useMongoClient: true}).then(function(err) {
+        if (database == 'index') {
           db.check_stats(settings.coin, function(exists) {
             if (exists == false) {
               console.log('Run \'npm start\' to create database structures before running this script.');
@@ -281,7 +277,12 @@ is_locked(function (exists) {
             });
           }
         }
-      });
+      }).catch(function(err) {
+		  console.log(err);
+		  console.log('Unable to connect to database: %s', dbString);
+          console.log('Aborting');
+          exit();
+	  });
     });
   }
 });
